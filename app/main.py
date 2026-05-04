@@ -265,3 +265,7 @@ def test_connection():
         conn.close()
         return {"status": "conexion exitosa"}
     return {"status": "fallo conexion"}
+
+@app.get("/ping")
+def ping():
+    return {"status": "ok"}
