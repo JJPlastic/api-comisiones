@@ -1,4 +1,4 @@
-import pyodbc
+import pymssql
 import os
 from dotenv import load_dotenv
 
@@ -6,13 +6,12 @@ load_dotenv()
 
 def get_connection():
     try:
-        conn = pyodbc.connect(
-            f"DRIVER={os.getenv('DB_DRIVER')};"
-            f"SERVER={os.getenv('DB_SERVER')};"
-            f"DATABASE={os.getenv('DB_DATABASE')};"
-            f"UID={os.getenv('DB_USER')};"
-            f"PWD={os.getenv('DB_PASSWORD')};"
-            "TrustServerCertificate=yes;"
+        conn = pymssql.connect(
+            server=os.getenv("DB_SERVER"),
+            user=os.getenv("DB_USER"),
+            password=os.getenv("DB_PASSWORD"),
+            database=os.getenv("DB_DATABASE"),
+            port=1433  # puerto SQL Server estándar
         )
         return conn
 
