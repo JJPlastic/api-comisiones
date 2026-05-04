@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Comisiones</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+
+<body class="bg-light">
+
+<div class="container mt-5">
+    <h2 class="mb-4">💰 Comisiones por Vendedor</h2>
+
+    <input type="date" id="inicio">
+    <input type="date" id="fin">
+
+    <button class="btn btn-primary mb-3" onclick="cargarComisiones()">
+        Cargar Comisiones
+    </button>
+
+    <table class="table table-bordered table-striped">
+        <thead class="table-dark">
+            <tr>
+                <th>Vendedor</th>
+                <th>Total Ventas</th>
+                <th>Comisión</th>
+            </tr>
+        </thead>
+        <tbody id="tabla"></tbody>
+    </table>
+</div>
+
+<script>
+async function cargarComisiones() {
+    const inicio = document.getElementById("inicio").value;
+    const fin = document.getElementById("fin").value;
+
+    const url = `http://127.0.0.1:8000/comisiones?fecha_inicio=${inicio}&fecha_fin=${fin}`;
+
+    const response = await fetch(url);
+    const data = await response.json();
+
+    const tabla = document.getElementById("tabla");
+    tabla.innerHTML = "";
+
+    data.forEach(item => {
+        tabla.innerHTML += `
+            <tr>
+                <td>${item.vendedor}</td>
+                <td>S/ ${item.total_ventas.toFixed(2)}</td>
+                <td>S/ ${item.comision.toFixed(2)}</td>
+            </tr>
+        `;
+    });
+}
+</script>
+
+</body>
+</html>
