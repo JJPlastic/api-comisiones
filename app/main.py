@@ -9,7 +9,7 @@ app = FastAPI()
 # =========================================================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # en producción luego lo restringes
+    allow_origins=["*"],  # restringir en producción
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -23,24 +23,46 @@ def home():
     return {"mensaje": "API ERP de comisiones 🚀"}
 
 # =========================================================
-# 📊 VENDEDORES
+# 🧪 TEST
+# =========================================================
+@app.get("/ping")
+def ping():
+    return {"status": "ok"}
+
+@app.get("/test-connection")
+def test_connection():
+    conn = get_connection()
+    if conn:
+        conn.close()
+        return {"status": "conexion exitosa"}
+    return {"status": "fallo conexion"}
+
+# =========================================================
+# 📊 VENDEDORES (DINÁMICO DESDE SQL)
 # =========================================================
 @app.get("/vendedores")
 def obtener_vendedores():
     conn = None
     try:
         conn = get_connection()
-        if conn is None:
-            return {"error": "sin conexión a BD"}
-
         cursor = conn.cursor()
+
         cursor.execute("""
-            SELECT DISTINCT vendedor_nombre
-            FROM vw_comercial_base2
+        SELECT DISTINCT
+            CASE 
+                WHEN c.Vendedor = 155 THEN 'JOHN'
+                WHEN c.Vendedor = 1023 THEN 'NEYRA'
+                WHEN c.Vendedor = 944 THEN 'PATRICIA'
+                WHEN c.Vendedor = 268 THEN 'JAVIER'
+                WHEN c.Vendedor = 935 THEN 'ALEX'
+                WHEN c.Vendedor IN (3,1043) THEN 'FREDDY'
+                WHEN c.Vendedor = 978 THEN 'SOFÍA'
+                ELSE 'SIN ASIGNAR'
+            END AS vendedor
+        FROM [ServidorLectura].db_a40d06_plastic.dbo.CM_Documento c
         """)
 
-        data = [row[0] for row in cursor.fetchall()]
-        return data
+        return [row[0] for row in cursor.fetchall()]
 
     except Exception as e:
         return {"error_real": str(e)}
@@ -64,23 +86,22 @@ def guardar_comision(
             return {"error": "Porcentaje inválido (0 - 10%)"}
 
         conn = get_connection()
-        if conn is None:
-            return {"error": "sin conexión a BD"}
-
         cursor = conn.cursor()
 
         cursor.execute("""
-            IF EXISTS (
-                SELECT 1 FROM comisiones_config
-                WHERE vendedor_nombre = ? AND fecha_mes = ?
-            )
+        IF EXISTS (
+            SELECT 1 FROM comisiones_config
+            WHERE vendedor_nombre = %s AND fecha_mes = %s
+        )
             UPDATE comisiones_config
-            SET porcentaje = ?
-            WHERE vendedor_nombre = ? AND fecha_mes = ?
-            ELSE
+            SET porcentaje = %s
+            WHERE vendedor_nombre = %s AND fecha_mes = %s
+        ELSE
             INSERT INTO comisiones_config (vendedor_nombre, fecha_mes, porcentaje)
-            VALUES (?, ?, ?)
-        """, (vendedor, fecha_mes, porcentaje, vendedor, fecha_mes, vendedor, fecha_mes, porcentaje))
+            VALUES (%s, %s, %s)
+        """, (vendedor, fecha_mes, porcentaje,
+              vendedor, fecha_mes,
+              vendedor, fecha_mes, porcentaje))
 
         conn.commit()
         return {"mensaje": "Comisión guardada"}
@@ -103,9 +124,9 @@ def listar_config():
         cursor = conn.cursor()
 
         cursor.execute("""
-            SELECT vendedor_nombre, fecha_mes, porcentaje
-            FROM comisiones_config
-            ORDER BY fecha_mes DESC
+        SELECT vendedor_nombre, fecha_mes, porcentaje
+        FROM comisiones_config
+        ORDER BY fecha_mes DESC
         """)
 
         return [
@@ -125,7 +146,7 @@ def listar_config():
             conn.close()
 
 # =========================================================
-# 💰 COMISIONES
+# 💰 COMISIONES (OPTIMIZADO)
 # =========================================================
 @app.get("/comisiones-vendedor")
 def comisiones_por_vendedor(
@@ -138,33 +159,56 @@ def comisiones_por_vendedor(
         cursor = conn.cursor()
 
         query = """
+        WITH base AS (
+            SELECT
+                CONCAT(c.TipoDocumento,'-',c.NumeroDocumento) AS factura,
+                CAST(c.FechaDocumento AS DATE) AS fecha,
+                DATEFROMPARTS(YEAR(c.FechaDocumento), MONTH(c.FechaDocumento), 1) AS fecha_mes,
+                d.MontoFinal AS monto,
+
+                CASE 
+                    WHEN c.Vendedor = 155 THEN 'JOHN'
+                    WHEN c.Vendedor = 1023 THEN 'NEYRA'
+                    WHEN c.Vendedor = 944 THEN 'PATRICIA'
+                    WHEN c.Vendedor = 268 THEN 'JAVIER'
+                    WHEN c.Vendedor = 935 THEN 'ALEX'
+                    WHEN c.Vendedor IN (3,1043) THEN 'FREDDY'
+                    WHEN c.Vendedor = 978 THEN 'SOFÍA'
+                    ELSE 'SIN ASIGNAR'
+                END AS vendedor
+
+            FROM [ServidorLectura].db_a40d06_plastic.dbo.CM_DocumentoDetalle d
+            INNER JOIN [ServidorLectura].db_a40d06_plastic.dbo.CM_Documento c
+                ON d.Compania=c.Compania
+               AND d.TipoDocumento=c.TipoDocumento
+               AND d.NumeroDocumento=c.NumeroDocumento
+        )
+
         SELECT
-            v.vendedor_nombre,
-            v.fecha_mes,
-            SUM(v.ventas_monto) AS total_ventas,
-            ISNULL(c.porcentaje, 0.015) AS porcentaje
-        FROM vw_comercial_base2 v
-        INNER JOIN fact_ventas_erp f
-            ON v.numero_factura = f.numero_factura
-        LEFT JOIN comisiones_config c
-            ON v.vendedor_nombre = c.vendedor_nombre
-            AND v.fecha_mes = c.fecha_mes
-        WHERE f.monto_cobrado >= f.monto_factura
+            vendedor,
+            fecha_mes,
+            SUM(monto) AS total,
+            ISNULL(cfg.porcentaje, 0.015) AS porcentaje
+        FROM base b
+        LEFT JOIN comisiones_config cfg
+            ON b.vendedor = cfg.vendedor_nombre
+           AND b.fecha_mes = cfg.fecha_mes
+        WHERE 1=1
         """
 
         params = []
 
         if vendedor:
-            query += " AND v.vendedor_nombre = ?"
+            query += " AND vendedor = %s"
             params.append(vendedor)
 
         if mes:
-            query += " AND CONVERT(VARCHAR(7), v.fecha_mes, 120) = ?"
+            query += " AND CONVERT(VARCHAR(7), fecha_mes, 120) = %s"
             params.append(mes)
 
         query += """
-        GROUP BY v.vendedor_nombre, v.fecha_mes, c.porcentaje
-        ORDER BY v.fecha_mes DESC
+        GROUP BY vendedor, fecha_mes, cfg.porcentaje
+        ORDER BY fecha_mes DESC
         """
 
         cursor.execute(query, params)
@@ -197,7 +241,7 @@ def comisiones_por_vendedor(
             conn.close()
 
 # =========================================================
-# 📄 DETALLE FACTURA
+# 📄 DETALLE FACTURAS COBRADAS
 # =========================================================
 @app.get("/comisiones-detalle")
 def comisiones_detalle(
@@ -211,26 +255,38 @@ def comisiones_detalle(
 
         query = """
         SELECT
-            v.numero_factura,
-            v.vendedor_nombre,
-            v.fecha,
-            v.fecha_mes,
-            f.monto_factura,
-            f.monto_cobrado
-        FROM vw_comercial_base2 v
-        INNER JOIN fact_ventas_erp f
-            ON v.numero_factura = f.numero_factura
-        WHERE f.monto_cobrado >= f.monto_factura
+            CONCAT(c.TipoDocumento,'-',c.NumeroDocumento) AS factura,
+            CAST(c.FechaDocumento AS DATE) AS fecha,
+
+            CASE 
+                WHEN c.Vendedor = 155 THEN 'JOHN'
+                WHEN c.Vendedor = 1023 THEN 'NEYRA'
+                WHEN c.Vendedor = 944 THEN 'PATRICIA'
+                WHEN c.Vendedor = 268 THEN 'JAVIER'
+                WHEN c.Vendedor = 935 THEN 'ALEX'
+                WHEN c.Vendedor IN (3,1043) THEN 'FREDDY'
+                WHEN c.Vendedor = 978 THEN 'SOFÍA'
+                ELSE 'SIN ASIGNAR'
+            END AS vendedor,
+
+            d.MontoFinal AS monto
+
+        FROM [ServidorLectura].db_a40d06_plastic.dbo.CM_DocumentoDetalle d
+        INNER JOIN [ServidorLectura].db_a40d06_plastic.dbo.CM_Documento c
+            ON d.Compania=c.Compania
+           AND d.TipoDocumento=c.TipoDocumento
+           AND d.NumeroDocumento=c.NumeroDocumento
+        WHERE 1=1
         """
 
         params = []
 
         if vendedor:
-            query += " AND v.vendedor_nombre = ?"
+            query += " AND c.Vendedor = %s"
             params.append(vendedor)
 
         if mes:
-            query += " AND CONVERT(VARCHAR(7), v.fecha_mes, 120) = ?"
+            query += " AND CONVERT(VARCHAR(7), c.FechaDocumento, 120) = %s"
             params.append(mes)
 
         cursor.execute(query, params)
@@ -238,12 +294,9 @@ def comisiones_detalle(
         return [
             {
                 "factura": r[0],
-                "vendedor": r[1],
-                "fecha": str(r[2]),
-                "mes": str(r[3]),
-                "monto_factura": float(r[4]),
-                "monto_cobrado": float(r[5]),
-                "estado": "COBRADO"
+                "fecha": str(r[1]),
+                "vendedor": r[2],
+                "monto": float(r[3])
             }
             for r in cursor.fetchall()
         ]
@@ -254,18 +307,3 @@ def comisiones_detalle(
     finally:
         if conn:
             conn.close()
-
-# =========================================================
-# 🧪 TEST CONEXIÓN
-# =========================================================
-@app.get("/test-connection")
-def test_connection():
-    conn = get_connection()
-    if conn:
-        conn.close()
-        return {"status": "conexion exitosa"}
-    return {"status": "fallo conexion"}
-
-@app.get("/ping")
-def ping():
-    return {"status": "ok"}
