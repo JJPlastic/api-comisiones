@@ -307,3 +307,161 @@ def comisiones_detalle(
     finally:
         if conn:
             conn.close()
+
+@app.get("/comercial-base")
+def comercial_base(
+    vendedor: str = Query(None),
+    mes: str = Query(None)
+):
+    conn = None
+    try:
+        conn = get_connection()
+        if not conn:
+            return {"error": "No hay conexión"}
+
+        cursor = conn.cursor()
+
+        query = """
+        WITH pagos AS (
+            SELECT
+                dt.Compania,
+                dt.TipoDocumento,
+                dt.NumeroDocumento,
+                MAX(t.Fecha) AS fecha_pago,
+                SUM(dt.Monto) AS monto_cobrado_documento
+            FROM [ServidorLectura].db_a40d06_plastic.dbo.CM_DocumentoTransaccion dt
+            INNER JOIN [ServidorLectura].db_a40d06_plastic.dbo.CM_Transaccion t
+                ON dt.UnidadReplicacion = t.UnidadReplicacion
+               AND dt.Transaccion = t.Transaccion
+            WHERE t.Estado <> 'A'
+            GROUP BY dt.Compania, dt.TipoDocumento, dt.NumeroDocumento
+        )
+
+        SELECT 
+            v.Compania,
+
+            CASE 
+                WHEN v.Compania = '01' THEN 'Tinki'
+                WHEN v.Compania = '02' THEN 'JJPlastic'
+                ELSE 'Otra'
+            END AS empresa,
+
+            v.cliente_id,
+            dc.Nombre AS cliente,
+
+            -- 🔥 VENDEDOR
+            CASE 
+                WHEN c.Vendedor = 155 THEN 'JOHN'
+                WHEN c.Vendedor = 1023 THEN 'NEYRA'
+                WHEN c.Vendedor = 944 THEN 'PATRICIA'
+                WHEN c.Vendedor = 268 THEN 'JAVIER'
+                WHEN c.Vendedor = 935 THEN 'ALEX'
+                WHEN c.Vendedor IN (3,1043) THEN 'FREDDY'
+                WHEN c.Vendedor = 978 THEN 'SOFÍA'
+                ELSE 'SIN ASIGNAR'
+            END AS vendedor_nombre,
+
+            CASE 
+                WHEN c.Vendedor IN (3,1043) THEN 3
+                ELSE c.Vendedor
+            END AS vendedor_codigo,
+
+            v.fecha,
+            DATEFROMPARTS(YEAR(v.fecha), MONTH(v.fecha), 1) AS fecha_mes,
+
+            v.numero_factura,
+            v.producto_id,
+            dp.Descripcion AS producto,
+
+            v.cantidad_ajustada,
+            v.total_linea_original AS ventas,
+            ISNULL(v.monto_cobrado_linea,0) AS cobrado,
+
+            CASE
+                WHEN v.total_linea_original = 0 THEN 'Sin facturar'
+                WHEN ISNULL(v.monto_cobrado_linea,0) = 0 THEN 'Pendiente'
+                WHEN v.monto_cobrado_linea < v.total_linea_original THEN 'Parcial'
+                ELSE 'Cobrado'
+            END AS estado
+
+        FROM (
+
+            SELECT 
+                d.Compania,
+                CONCAT(c.TipoDocumento,'-',c.NumeroDocumento) AS numero_factura,
+                c.Cliente AS cliente_id,
+                CAST(c.FechaDocumento AS DATE) AS fecha,
+                d.Articulo AS producto_id,
+
+                CASE 
+                    WHEN YEAR(c.FechaDocumento)=2026 AND d.Unidad='UND'
+                    THEN ABS(d.Cantidad)/12.0
+                    ELSE d.Cantidad
+                END AS cantidad_ajustada,
+
+                d.MontoFinal AS total_linea_original,
+
+                ISNULL(p.monto_cobrado_documento,0) AS monto_cobrado_documento,
+
+                d.MontoFinal * 1.0 /
+                SUM(d.MontoFinal) OVER (
+                    PARTITION BY d.Compania,d.TipoDocumento,d.NumeroDocumento
+                ) * ISNULL(p.monto_cobrado_documento,0)
+                AS monto_cobrado_linea
+
+            FROM [ServidorLectura].db_a40d06_plastic.dbo.CM_DocumentoDetalle d
+
+            INNER JOIN [ServidorLectura].db_a40d06_plastic.dbo.CM_Documento c
+                ON d.Compania=c.Compania
+               AND d.TipoDocumento=c.TipoDocumento
+               AND d.NumeroDocumento=c.NumeroDocumento
+
+            LEFT JOIN pagos p
+                ON c.Compania=p.Compania
+               AND c.TipoDocumento=p.TipoDocumento
+               AND c.NumeroDocumento=p.NumeroDocumento
+
+            WHERE d.TipoDocumento IN ('BV','FA','NC','RC')
+
+        ) v
+
+        LEFT JOIN [ServidorLectura].db_a40d06_plastic.dbo.Persona dc
+            ON v.cliente_id = dc.Persona
+
+        LEFT JOIN [ServidorLectura].db_a40d06_plastic.dbo.LG_Articulo dp
+            ON v.producto_id = dp.Articulo
+
+        INNER JOIN [ServidorLectura].db_a40d06_plastic.dbo.CM_Documento c
+            ON v.numero_factura =
+               CONCAT(c.TipoDocumento,'-',c.NumeroDocumento)
+
+        WHERE 1=1
+        """
+
+        params = []
+
+        if vendedor:
+            query += " AND (CASE WHEN c.Vendedor=155 THEN 'JOHN' WHEN c.Vendedor=1023 THEN 'NEYRA' WHEN c.Vendedor=944 THEN 'PATRICIA' WHEN c.Vendedor=268 THEN 'JAVIER' WHEN c.Vendedor=935 THEN 'ALEX' WHEN c.Vendedor IN (3,1043) THEN 'FREDDY' WHEN c.Vendedor=978 THEN 'SOFÍA' ELSE 'SIN ASIGNAR' END) = %s"
+            params.append(vendedor)
+
+        if mes:
+            query += " AND CONVERT(VARCHAR(7), v.fecha, 120) = %s"
+            params.append(mes)
+
+        cursor.execute(query, params)
+
+        columns = [col[0] for col in cursor.description]
+
+        data = [
+            dict(zip(columns, row))
+            for row in cursor.fetchall()
+        ]
+
+        return data
+
+    except Exception as e:
+        return {"error_real": str(e)}
+
+    finally:
+        if conn:
+            conn.close()
