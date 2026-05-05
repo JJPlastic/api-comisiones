@@ -59,7 +59,7 @@ def obtener_vendedores():
                 WHEN c.Vendedor = 978 THEN 'SOFÍA'
                 ELSE 'SIN ASIGNAR'
             END AS vendedor
-        FROM [ServidorLectura].db_a40d06_plastic.dbo.CM_Documento c
+        FROM db_a40d06_plastic.dbo.CM_Documento c
         """)
 
         return [row[0] for row in cursor.fetchall()]
@@ -177,8 +177,8 @@ def comisiones_por_vendedor(
                     ELSE 'SIN ASIGNAR'
                 END AS vendedor
 
-            FROM [ServidorLectura].db_a40d06_plastic.dbo.CM_DocumentoDetalle d
-            INNER JOIN [ServidorLectura].db_a40d06_plastic.dbo.CM_Documento c
+            FROM db_a40d06_plastic.dbo.CM_DocumentoDetalle d
+            INNER JOIN db_a40d06_plastic.dbo.CM_Documento c
                 ON d.Compania=c.Compania
                AND d.TipoDocumento=c.TipoDocumento
                AND d.NumeroDocumento=c.NumeroDocumento
@@ -271,8 +271,8 @@ def comisiones_detalle(
 
             d.MontoFinal AS monto
 
-        FROM [ServidorLectura].db_a40d06_plastic.dbo.CM_DocumentoDetalle d
-        INNER JOIN [ServidorLectura].db_a40d06_plastic.dbo.CM_Documento c
+        FROM db_a40d06_plastic.dbo.CM_DocumentoDetalle d
+        INNER JOIN db_a40d06_plastic.dbo.CM_Documento c
             ON d.Compania=c.Compania
            AND d.TipoDocumento=c.TipoDocumento
            AND d.NumeroDocumento=c.NumeroDocumento
@@ -329,8 +329,8 @@ def comercial_base(
                 dt.NumeroDocumento,
                 MAX(t.Fecha) AS fecha_pago,
                 SUM(dt.Monto) AS monto_cobrado_documento
-            FROM [ServidorLectura].db_a40d06_plastic.dbo.CM_DocumentoTransaccion dt
-            INNER JOIN [ServidorLectura].db_a40d06_plastic.dbo.CM_Transaccion t
+            FROM db_a40d06_plastic.dbo.CM_DocumentoTransaccion dt
+            INNER JOIN db_a40d06_plastic.dbo.CM_Transaccion t
                 ON dt.UnidadReplicacion = t.UnidadReplicacion
                AND dt.Transaccion = t.Transaccion
             WHERE t.Estado <> 'A'
@@ -409,9 +409,9 @@ def comercial_base(
                 ) * ISNULL(p.monto_cobrado_documento,0)
                 AS monto_cobrado_linea
 
-            FROM [ServidorLectura].db_a40d06_plastic.dbo.CM_DocumentoDetalle d
+            FROM db_a40d06_plastic.dbo.CM_DocumentoDetalle d
 
-            INNER JOIN [ServidorLectura].db_a40d06_plastic.dbo.CM_Documento c
+            INNER JOIN db_a40d06_plastic.dbo.CM_Documento c
                 ON d.Compania=c.Compania
                AND d.TipoDocumento=c.TipoDocumento
                AND d.NumeroDocumento=c.NumeroDocumento
@@ -425,13 +425,13 @@ def comercial_base(
 
         ) v
 
-        LEFT JOIN [ServidorLectura].db_a40d06_plastic.dbo.Persona dc
+        LEFT JOIN db_a40d06_plastic.dbo.Persona dc
             ON v.cliente_id = dc.Persona
 
-        LEFT JOIN [ServidorLectura].db_a40d06_plastic.dbo.LG_Articulo dp
+        LEFT JOIN db_a40d06_plastic.dbo.LG_Articulo dp
             ON v.producto_id = dp.Articulo
 
-        INNER JOIN [ServidorLectura].db_a40d06_plastic.dbo.CM_Documento c
+        INNER JOIN db_a40d06_plastic.dbo.CM_Documento c
             ON v.numero_factura =
                CONCAT(c.TipoDocumento,'-',c.NumeroDocumento)
 
