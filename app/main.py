@@ -403,11 +403,15 @@ def comercial_base(
 
                 ISNULL(p.monto_cobrado_documento,0) AS monto_cobrado_documento,
 
-                d.MontoFinal * 1.0 /
-                SUM(d.MontoFinal) OVER (
-                    PARTITION BY d.Compania,d.TipoDocumento,d.NumeroDocumento
-                ) * ISNULL(p.monto_cobrado_documento,0)
-                AS monto_cobrado_linea
+                ISNULL(
+                    d.MontoFinal * 1.0
+                    / NULLIF(
+                        SUM(d.MontoFinal) OVER (
+                            PARTITION BY d.Compania, d.TipoDocumento, d.NumeroDocumento
+                        ), 0
+                    )
+                    * ISNULL(p.monto_cobrado_documento, 0),
+                0) AS monto_cobrado_linea
 
             FROM db_a40d06_plastic.dbo.CM_DocumentoDetalle d
 
